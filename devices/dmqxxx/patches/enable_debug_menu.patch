@@ -1,0 +1,4 @@
+type: replace_line
+file: system/build.prop
+match: ro.build.type=user
+replace: ro.build.type=userdebug

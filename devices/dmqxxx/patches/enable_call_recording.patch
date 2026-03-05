@@ -1,0 +1,4 @@
+type: replace_line
+file: system/build.prop
+match: ro.config.call_recording_supported=0
+replace: ro.config.call_recording_supported=1

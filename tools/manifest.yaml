@@ -1,0 +1,119 @@
+tools:
+  # Boot image tools from mkbootimg_tools
+  lz4:
+    type: system
+    executable: lz4
+    description: LZ4 compression utility
+
+  simg2img:
+    type: cmake_build
+    repo: https://github.com/nmeum/android-tools.git
+    version: latest
+    subpath: .
+    executable: simg2img
+    description: Sparse image to raw image converter
+
+  mkbootimg:
+    type: prebuilt_binary
+    repo: https://github.com/xiaolu/mkbootimg_tools.git
+    version: master
+    subpath: mkbootimg
+    executable: mkbootimg
+    description: Create Android boot images
+
+  dtc:
+    type: cmake_build
+    repo: https://github.com/nmeum/android-tools.git
+    version: latest
+    subpath: .
+    executable: dtc
+    description: Device tree compiler
+
+  avbtool:
+    type: python_wrapper
+    repo: https://github.com/lineageos/android_external_avb.git
+    version: lineage-21.0
+    build: python_wrapper
+    executable: avbtool
+    entry: avbtool.py
+    description: Android Verified Boot signing tool
+
+  # Dynamic partition tools (CMake-based from nmeum/android-tools)
+  lpunpack:
+    type: cmake_build
+    repo: https://github.com/nmeum/android-tools.git
+    version: latest
+    subpath: .
+    executable: lpunpack
+    description: Extract partitions from super.img (dynamic partitions)
+
+  lpmake:
+    type: cmake_build
+    repo: https://github.com/nmeum/android-tools.git
+    version: latest
+    subpath: .
+    executable: lpmake
+    description: Create super.img with dynamic partitions
+
+  # Android platform tools (useful for development)
+  adb:
+    type: cmake_build
+    repo: https://github.com/nmeum/android-tools.git
+    version: latest
+    subpath: .
+    executable: adb
+    description: Android Debug Bridge
+
+  fastboot:
+    type: cmake_build
+    repo: https://github.com/nmeum/android-tools.git
+    version: latest
+    subpath: .
+    executable: fastboot
+    description: Android Fastboot protocol
+
+  # System tools
+  zip:
+    type: system
+    executable: zip
+    description: Zip archive utility
+
+  tar:
+    type: system
+    executable: tar
+    description: Tape archive utility
+
+  unzip:
+    type: system
+    executable: unzip
+    description: Unzip archive utility
+
+  7z:
+    type: system
+    executable: 7z
+    description: 7-Zip archive utility
+
+  # EROFS filesystem tools
+  dump.erofs:
+    type: autotools
+    repo: https://github.com/erofs/erofs-utils.git
+    version: latest
+    subpath: .
+    executable: dump.erofs
+    description: EROFS filesystem inspection tool
+
+  mkfs.erofs:
+    type: autotools
+    repo: https://github.com/erofs/erofs-utils.git
+    version: latest
+    subpath: .
+    executable: mkfs.erofs
+    description: Create EROFS filesystem images
+
+  mount.erofs:
+    type: autotools
+    repo: https://github.com/erofs/erofs-utils.git
+    version: latest
+    subpath: .
+    executable: mount.erofs
+    description: Mount EROFS filesystem (FUSE)

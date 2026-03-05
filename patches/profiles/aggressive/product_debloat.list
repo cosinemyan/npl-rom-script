@@ -1,0 +1,16 @@
+# Google Apps
+app/Gmail2
+app/Chrome
+app/DuoStub
+app/Maps
+app/YouTube
+app/AssistantShell
+app/BardShell
+app/com.google.mainline.adservices
+app/com.google.mainline.telemetry
+priv-app/AndroidAutoStub
+priv-app/HotwordEnrollmentOKGoogleEx4HEXAGON
+priv-app/HotwordEnrollmentXGoogleEx4HEXAGON
+priv-app/Messages
+priv-app/SearchSelector
+overlay/GmsConfigOverlaySearchSelector.apk

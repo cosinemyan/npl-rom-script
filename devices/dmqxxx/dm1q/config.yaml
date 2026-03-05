@@ -1,0 +1,23 @@
+model: SM-S911B
+soc: sm8550
+fstab: fstab.qcom
+super_type: dynamic
+family: dmqxxx
+variant: dm1q
+output_name: dm1q
+
+partitions:
+  - system
+  - vendor
+  - product
+  - odm
+
+security:
+  disable_vaultkeeper: true
+  disable_proca: qsee
+
+features:
+  call_recording: true
+  battery_health_menu: true
+  debloat_bixby: true
+  debloat_samsung_account: false

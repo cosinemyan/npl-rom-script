@@ -1,0 +1,43 @@
+# Work directories
+work/
+*.img
+*.tar
+*.tar.md5
+*.zip
+
+# Temporary files
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output files
+output/
+final/
+downloads/
+extracted/
+
+# Logs
+logs/
+*.log
+
+# Bootstrapped tool outputs (generated)
+tools/cache/
+tools/bin/
+
+devices/dmqxxx/patches/payload/system/priv-app/wallpaper-res/wallpaper-res.apk
+
+# Local firmware storage (keep only folder scaffolding in git)
+firmware/**
+!firmware/
+!firmware/.gitkeep
+!firmware/*/
+!firmware/*/.gitkeep

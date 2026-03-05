@@ -1,0 +1,4 @@
+type: replace_line
+file: vendor/etc/init/vaultkeeper_common.rc
+match: start vaultkeeper
+replace: stop vaultkeeper
