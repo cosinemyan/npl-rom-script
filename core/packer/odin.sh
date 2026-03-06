@@ -274,6 +274,10 @@ repack_boot_with_custom_kernel() {
     return 0
   fi
 
+
+  printf 'SEANDROIDENFORCE' >> "$rebuilt_boot"
+  log_info "Appended SEANDROIDENFORCE marker to rebuilt boot image"
+
   lz4 -B4 --content-size -f "$rebuilt_boot" "$package_dir/boot.img.lz4" >/dev/null || return 1
   log_info "Custom kernel applied via boot repack: $(basename "$kernel_blob")"
 }
@@ -305,7 +309,7 @@ create_odin_tar() {
   local f
   while IFS= read -r f; do
     case "$f" in
-      userdata*|*.sum|*.md5)
+      userdata*|*.sum|*.md5|*.input.img|*.input.img.lz4)
         continue
         ;;
     esac
@@ -455,6 +459,9 @@ create_odin_package() {
     local patched_vbmeta
     for patched_vbmeta in "$patched_vbmeta_dir"/vbmeta*.img "$patched_vbmeta_dir"/vbmeta*.img.lz4; do
       [[ -f "$patched_vbmeta" ]] || continue
+      # Skip intermediate decompression artifacts (*.input.img / *.input.img.lz4)
+      [[ "$(basename "$patched_vbmeta")" == *.input.img ]] && continue
+      [[ "$(basename "$patched_vbmeta")" == *.input.img.lz4 ]] && continue
       _copy_odin_extra_file "$patched_vbmeta" "$package_dir" || return 1
     done
   fi

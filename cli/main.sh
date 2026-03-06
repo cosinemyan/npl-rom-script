@@ -721,6 +721,10 @@ prepare_vbmeta_artifacts() {
     log_warn "No vbmeta_system.img found in firmware payload"
   fi
 
+  # Clean up intermediate decompressed copies so they don't end up in the AP tar.
+  [[ -f "$output_dir/vbmeta.input.img" ]] && rm -f "$output_dir/vbmeta.input.img"
+  [[ -f "$output_dir/vbmeta_system.input.img" ]] && rm -f "$output_dir/vbmeta_system.input.img"
+
   echo "$output_vbmeta"
 }
 
