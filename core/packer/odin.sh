@@ -1,6 +1,27 @@
 #!/bin/bash
 # Odin Packer - Create Odin flashable AP.tar
 
+_env_is_true() {
+  local value="${1:-}"
+  case "${value,,}" in
+    1|true|yes|y|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_image_has_avb_footer() {
+  local image="$1"
+  [[ -f "$image" ]] || return 1
+
+  local image_size
+  image_size=$(stat -c%s "$image" 2>/dev/null || echo 0)
+  [[ "$image_size" -ge 64 ]] || return 1
+
+  local footer_magic
+  footer_magic=$(dd if="$image" bs=1 skip=$((image_size - 64)) count=4 2>/dev/null || true)
+  [[ "$footer_magic" == "AVBf" ]]
+}
+
 _copy_odin_extra_file() {
   local src="$1"
   local package_dir="$2"
@@ -196,6 +217,42 @@ repack_boot_with_custom_kernel() {
     return 0
   fi
 
+  local work_dir="$WORK_DIR/output/kernel_repack"
+  rm -rf "$work_dir"
+  mkdir -p "$work_dir"
+
+  local make_boot_override="$PROJECT_ROOT/tools/make_boot_override.sh"
+  if [[ -x "$make_boot_override" ]]; then
+    local auto_boot_lz4="$work_dir/boot-auto.img.lz4"
+    local auto_work_dir="$work_dir/auto_full_boot"
+    local auto_magiskboot=""
+
+    if command -v magiskboot >/dev/null 2>&1; then
+      auto_magiskboot="$(command -v magiskboot)"
+    elif [[ -x "$PROJECT_ROOT/tools/bin/magiskboot" ]]; then
+      auto_magiskboot="$PROJECT_ROOT/tools/bin/magiskboot"
+    fi
+
+    if [[ -z "$auto_magiskboot" ]]; then
+      log_warn "magiskboot not found; run ./tools/setup.sh --tool magiskboot for automated boot rebuild"
+    else
+      log_info "Attempting automated full boot rebuild from custom kernel blob"
+      if "$make_boot_override" \
+          --stock-boot "$boot_src" \
+          --kernel "$kernel_blob" \
+          --out "$auto_boot_lz4" \
+          --work-dir "$auto_work_dir" \
+          --magiskboot "$auto_magiskboot"
+      then
+        _copy_odin_extra_file "$auto_boot_lz4" "$package_dir" || return 1
+        log_info "Custom kernel applied via automated full boot rebuild"
+        return 0
+      fi
+    fi
+
+    log_warn "Automated full boot rebuild unavailable or failed; trying legacy mkbootimg fallback"
+  fi
+
   local unpack_bootimg_py="$PROJECT_ROOT/tools/cache/android-tools/vendor/mkbootimg/unpack_bootimg.py"
   local mkbootimg_py="$PROJECT_ROOT/tools/cache/android-tools/vendor/mkbootimg/mkbootimg.py"
   if [[ ! -f "$unpack_bootimg_py" ]] || [[ ! -f "$mkbootimg_py" ]]; then
@@ -203,15 +260,18 @@ repack_boot_with_custom_kernel() {
     return 1
   fi
 
-  local work_dir="$WORK_DIR/output/kernel_repack"
-  rm -rf "$work_dir"
-  mkdir -p "$work_dir"
-
   local raw_boot="$work_dir/boot.img"
   if [[ "$boot_src" == *.lz4 ]]; then
     lz4 -d -f "$boot_src" "$raw_boot" >/dev/null || return 1
   else
     cp "$boot_src" "$raw_boot"
+  fi
+
+  local force_kernel_blob_repack="${ROM_BUILDER_FORCE_KERNEL_BLOB_REPACK:-}"
+  if _image_has_avb_footer "$raw_boot" && ! _env_is_true "$force_kernel_blob_repack"; then
+    log_warn "Stock boot image has AVB footer/signature block; skipping kernel-blob repack to avoid invalid Odin boot image"
+    log_warn "Use full boot.img/boot.img.lz4 in device kernel/ for override, or set ROM_BUILDER_FORCE_KERNEL_BLOB_REPACK=true (unsafe)"
+    return 0
   fi
 
   local split_dir="$work_dir/split"
@@ -274,9 +334,19 @@ repack_boot_with_custom_kernel() {
     return 0
   fi
 
-
-  printf 'SEANDROIDENFORCE' >> "$rebuilt_boot"
-  log_info "Appended SEANDROIDENFORCE marker to rebuilt boot image"
+  local stock_size rebuilt_size
+  stock_size=$(stat -c%s "$raw_boot" 2>/dev/null || echo 0)
+  rebuilt_size=$(stat -c%s "$rebuilt_boot" 2>/dev/null || echo 0)
+  if [[ "$stock_size" -gt 0 && "$rebuilt_size" -gt 0 ]]; then
+    if [[ "$rebuilt_size" -gt "$stock_size" ]]; then
+      log_warn "Repacked boot image is larger than stock ($rebuilt_size > $stock_size); skipping kernel-blob repack"
+      return 0
+    fi
+    if [[ "$rebuilt_size" -lt "$stock_size" ]]; then
+      truncate -s "$stock_size" "$rebuilt_boot" || return 1
+      log_info "Padded rebuilt boot image to stock size: $stock_size bytes"
+    fi
+  fi
 
   lz4 -B4 --content-size -f "$rebuilt_boot" "$package_dir/boot.img.lz4" >/dev/null || return 1
   log_info "Custom kernel applied via boot repack: $(basename "$kernel_blob")"

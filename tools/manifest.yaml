@@ -38,6 +38,13 @@ tools:
     entry: avbtool.py
     description: Android Verified Boot signing tool
 
+  magiskboot:
+    type: magisk_apk
+    repo: topjohnwu/Magisk
+    version: latest
+    executable: magiskboot
+    description: Boot image unpack/repack tool from official Magisk release APK
+
   # Dynamic partition tools (CMake-based from nmeum/android-tools)
   lpunpack:
     type: cmake_build

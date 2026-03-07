@@ -149,6 +149,9 @@ install_tool() {
     python_wrapper)
       install_git_clone_tool "$tool_name" "$tool_version" "$source_dir" "$executable_name"
       ;;
+    magisk_apk)
+      install_magisk_apk_tool "$tool_name" "$tool_version" "$source_dir" "$executable_name"
+      ;;
     autotools)
       install_autotools_tool "$tool_name" "$tool_version" "$source_dir" "$executable_name"
       ;;
@@ -306,6 +309,177 @@ install_prebuilt_binary_tool() {
   chmod +x "$BIN_DIR/$executable_name"
   
   log_info "Copied prebuilt binary: $executable_name"
+}
+
+# Install magiskboot from official Magisk APK release
+install_magisk_apk_tool() {
+  local tool_name="$1"
+  local version="$2"
+  local source_dir="$3"
+  local executable_name="$4"
+
+  local repo
+  repo=$(parse_tool_info "$MANIFEST_FILE" "$tool_name" "repo" 2>/dev/null || true)
+  if [[ -z "$repo" ]]; then
+    log_error "Missing repo for $tool_name in manifest"
+    return 1
+  fi
+  repo="${repo#https://github.com/}"
+  repo="${repo%.git}"
+
+  local api_url=""
+  if [[ -n "$version" && "$version" != "latest" ]]; then
+    api_url="https://api.github.com/repos/$repo/releases/tags/$version"
+  else
+    api_url="https://api.github.com/repos/$repo/releases/latest"
+  fi
+
+  local -a http_args=(
+    -H "Accept: application/vnd.github+json"
+    -H "User-Agent: rom-builder-tools"
+  )
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    http_args+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+  fi
+
+  local release_json
+  if command -v curl &>/dev/null; then
+    release_json=$(curl -sL "${http_args[@]}" "$api_url")
+  elif command -v wget &>/dev/null; then
+    release_json=$(wget -qO- "$api_url")
+  else
+    log_error "Neither curl nor wget is available to fetch Magisk release metadata"
+    return 1
+  fi
+
+  _extract_magisk_apk_url_from_json() {
+    python3 -c '
+import json, sys
+def score(url: str):
+    name = url.rsplit("/", 1)[-1].lower()
+    return (
+        0 if "magisk" in name else 1,
+        1 if "stub" in name else 0,
+        len(name),
+        name
+    )
+def urls_from_release(rel):
+    out = []
+    for a in (rel.get("assets") or []):
+        u = (a.get("browser_download_url") or "").strip()
+        n = (a.get("name") or "").strip().lower()
+        if not u:
+            continue
+        ul = u.lower()
+        if ul.endswith(".apk") or n.endswith(".apk"):
+            out.append(u)
+    return out
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+try:
+    data = json.loads(raw)
+except Exception:
+    sys.exit(0)
+candidates = []
+if isinstance(data, dict):
+    candidates.extend(urls_from_release(data))
+elif isinstance(data, list):
+    for rel in data:
+        if isinstance(rel, dict):
+            candidates.extend(urls_from_release(rel))
+if candidates:
+    print(sorted(set(candidates), key=score)[0], end="")
+'
+  }
+
+  _extract_api_message_from_json() {
+    python3 -c '
+import json, sys
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+try:
+    data = json.loads(raw)
+except Exception:
+    sys.exit(0)
+if isinstance(data, dict):
+    msg = (data.get("message") or "").strip()
+    if msg:
+        print(msg, end="")
+'
+  }
+
+  local download_url
+  download_url=$(printf '%s' "$release_json" | _extract_magisk_apk_url_from_json || true)
+
+  # Fallback for cases where /latest is empty, API-shifted, or tag has no assets.
+  if [[ -z "$download_url" ]]; then
+    local releases_api_url="https://api.github.com/repos/$repo/releases?per_page=20"
+    local releases_json=""
+    if command -v curl &>/dev/null; then
+      releases_json=$(curl -sL "${http_args[@]}" "$releases_api_url")
+    else
+      releases_json=$(wget -qO- "$releases_api_url")
+    fi
+    download_url=$(printf '%s' "$releases_json" | _extract_magisk_apk_url_from_json || true)
+    if [[ -z "$download_url" ]]; then
+      local api_message=""
+      api_message=$(printf '%s' "$release_json" | _extract_api_message_from_json || true)
+      if [[ -n "$api_message" ]]; then
+        log_error "GitHub API message: $api_message"
+      fi
+    fi
+  fi
+
+  if [[ -z "$download_url" ]]; then
+    log_error "Could not find a Magisk APK asset in release metadata for $repo"
+    log_error "If this is a GitHub API rate limit issue, set GITHUB_TOKEN and rerun setup"
+    return 1
+  fi
+
+  local apk_file="$source_dir/$(basename "$download_url")"
+  mkdir -p "$source_dir"
+
+  if [[ ! -f "$apk_file" ]]; then
+    log_info "Downloading Magisk APK: $download_url"
+    if command -v curl &>/dev/null; then
+      curl -L -o "$apk_file" "$download_url"
+    else
+      wget -O "$apk_file" "$download_url"
+    fi
+  else
+    log_info "Using cached Magisk APK: $apk_file"
+  fi
+
+  local abi_path=""
+  case "$(uname -m)" in
+    x86_64) abi_path="lib/x86_64/libmagiskboot.so" ;;
+    aarch64|arm64) abi_path="lib/arm64-v8a/libmagiskboot.so" ;;
+    x86|i686) abi_path="lib/x86/libmagiskboot.so" ;;
+    armv7l|armhf) abi_path="lib/armeabi-v7a/libmagiskboot.so" ;;
+    *)
+      log_error "Unsupported host architecture for magiskboot auto-install: $(uname -m)"
+      return 1
+      ;;
+  esac
+
+  local extract_dir="$source_dir/extracted"
+  mkdir -p "$extract_dir"
+  if ! unzip -j -o "$apk_file" "$abi_path" -d "$extract_dir" >/dev/null; then
+    log_error "Failed extracting $abi_path from $apk_file"
+    return 1
+  fi
+
+  local extracted_boot="$extract_dir/$(basename "$abi_path")"
+  if [[ ! -f "$extracted_boot" ]]; then
+    log_error "Extracted magiskboot binary not found: $extracted_boot"
+    return 1
+  fi
+
+  cp "$extracted_boot" "$BIN_DIR/$executable_name"
+  chmod +x "$BIN_DIR/$executable_name"
+  log_info "Installed magiskboot: $BIN_DIR/$executable_name"
 }
 
 # Install CMake-based tool (UN1CA's approach)
