@@ -223,7 +223,7 @@ repack_boot_with_custom_kernel() {
 
   local make_boot_override="$PROJECT_ROOT/tools/make_boot_override.sh"
   if [[ -x "$make_boot_override" ]]; then
-    local auto_boot_lz4="$work_dir/boot-auto.img.lz4"
+    local auto_boot_lz4="$work_dir/boot.img.lz4"
     local auto_work_dir="$work_dir/auto_full_boot"
     local auto_magiskboot=""
 
@@ -244,7 +244,7 @@ repack_boot_with_custom_kernel() {
           --work-dir "$auto_work_dir" \
           --magiskboot "$auto_magiskboot"
       then
-        _copy_odin_extra_file "$auto_boot_lz4" "$package_dir" || return 1
+        cp -f "$auto_boot_lz4" "$package_dir/boot.img.lz4" || return 1
         log_info "Custom kernel applied via automated full boot rebuild"
         return 0
       fi
