@@ -404,10 +404,9 @@ create_odin_tar() {
     return 1
   fi
   
-  local ap_tar_dir ap_tar_base odin_md5
+  local ap_tar_dir ap_tar_base
   ap_tar_dir="$(dirname "$ap_tar")"
   ap_tar_base="$(basename "$ap_tar")"
-  odin_md5="${ap_tar}.md5"
   (
     cd "$ap_tar_dir" || exit 1
     # Odin expects md5sum output line appended to the TAR payload.
@@ -416,10 +415,9 @@ create_odin_tar() {
     log_error "Failed appending Odin MD5 footer"
     return 1
   }
-  mv -f "$ap_tar" "$odin_md5"
   
-  log_info "Odin package created: $odin_md5"
-  echo "$odin_md5"
+  log_info "Odin package created: $ap_tar"
+  echo "$ap_tar"
 }
 
 create_home_csc_odin_package() {
@@ -467,10 +465,9 @@ create_home_csc_odin_package() {
     return 1
   }
 
-  local csc_tar_dir csc_tar_base csc_md5
+  local csc_tar_dir csc_tar_base
   csc_tar_dir="$(dirname "$csc_tar")"
   csc_tar_base="$(basename "$csc_tar")"
-  csc_md5="${csc_tar}.md5"
   (
     cd "$csc_tar_dir" || exit 1
     # Odin expects md5sum output line appended to the TAR payload.
@@ -480,10 +477,9 @@ create_home_csc_odin_package() {
     log_error "Failed appending HOME_CSC Odin MD5 footer"
     return 1
   }
-  mv -f "$csc_tar" "$csc_md5"
   rm -rf "$package_dir"
 
-  log_success "HOME_CSC package: $csc_md5"
+  log_success "HOME_CSC package: $csc_tar"
 }
 
 create_odin_package() {

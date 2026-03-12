@@ -14,8 +14,11 @@ readonly BASE_WORK_DIR="$PROJECT_ROOT/work"
 readonly DEVICE_ROOT_NAME="$(basename "$DEVICES_DIR")"
 WORK_DIR="$BASE_WORK_DIR"
 
-# Setup PATH to use bootstrapped tools first
-export PATH="$BIN_DIR:$PATH"
+# Make bundled tools available without shadowing core host utilities.
+# Some copied "system" binaries inside tools/bin can be less portable than the
+# host versions (for example, missing shared-library dependencies on another
+# machine), while project-specific tools are still discoverable via PATH suffix.
+export PATH="$PATH:$BIN_DIR"
 
 source "$CORE_DIR/logger.sh"
 source "$CORE_DIR/yaml_parser.sh"
@@ -275,8 +278,14 @@ create_shareable_7z_bundle() {
   fi
 
   local ap_pkg home_csc_pkg
-  ap_pkg=$(find "$final_dir" -maxdepth 1 -type f -name "*AP*.tar.md5" | head -n 1 || true)
-  home_csc_pkg=$(find "$final_dir" -maxdepth 1 -type f -name "*HOME_CSC*.tar.md5" | head -n 1 || true)
+  ap_pkg=$(find "$final_dir" -maxdepth 1 -type f -name "*AP*.tar" | head -n 1 || true)
+  home_csc_pkg=$(find "$final_dir" -maxdepth 1 -type f -name "*HOME_CSC*.tar" | head -n 1 || true)
+  if [[ -z "$ap_pkg" ]]; then
+    ap_pkg=$(find "$final_dir" -maxdepth 1 -type f -name "*AP*.tar.md5" | head -n 1 || true)
+  fi
+  if [[ -z "$home_csc_pkg" ]]; then
+    home_csc_pkg=$(find "$final_dir" -maxdepth 1 -type f -name "*HOME_CSC*.tar.md5" | head -n 1 || true)
+  fi
 
   if [[ -z "$ap_pkg" ]] || [[ -z "$home_csc_pkg" ]]; then
     log_warn "Missing AP/HOME_CSC package(s); skipping shareable firmware bundle"
@@ -303,12 +312,23 @@ create_shareable_7z_bundle() {
   mkdir -p "$bundle_stage"
   rm -f "$bundle_path"
 
-  cp "$ap_pkg" "$bundle_stage/"
-  cp "$home_csc_pkg" "$bundle_stage/"
+  local -a bundle_inputs=("$ap_pkg" "$home_csc_pkg")
 
   local f
   for f in "${slot_files[@]}"; do
-    cp "$f" "$bundle_stage/"
+    bundle_inputs+=("$f")
+  done
+
+  local src dst
+  for src in "${bundle_inputs[@]}"; do
+    dst="$bundle_stage/$(basename "$src")"
+    if ! ln "$src" "$dst" 2>/dev/null; then
+      cp "$src" "$dst" || {
+        log_warn "Failed staging bundle input: $src"
+        rm -rf "$bundle_stage"
+        return 0
+      }
+    fi
   done
 
   run_with_progress "Building shareable firmware 7z bundle" \
@@ -607,7 +627,7 @@ rebuild_partitions_and_super() {
   mkdir -p "$(dirname "$output_super")"
   
   if command -v lpmake &> /dev/null; then
-    rebuild_super_img "$partitions_dir" "$output_super" "$config_file" || return 1
+    rebuild_super_img "$partitions_dir" "$output_super" "$config_file" "$original_super_img" || return 1
   else
     log_warn "lpmake not available, skipping super.img rebuild"
     log_warn "Output will use original super.img"
@@ -634,14 +654,14 @@ create_output_package() {
   case "$output_format" in
     odin)
       local package
-      package=$(create_odin_package "$super_img" "$vbmeta_img" "$vbmeta_source_dir" "$output_dir" "$device" "$config_file" "$patched_vbmeta_dir") || return 1
+      package=$(create_odin_package "$super_img" "$vbmeta_img" "$vbmeta_source_dir" "$output_dir" "$device" "$config_file" "$patched_vbmeta_dir" | tail -n 1) || return 1
       [[ -n "$package" ]] || return 1
       [[ -f "$package" ]] || return 1
       log_success "Odin package: $package"
       ;;
     twrp)
       local package
-      package=$(create_twrp_zip "$(dirname "$super_img")" "$output_dir" "$device") || return 1
+      package=$(create_twrp_zip "$(dirname "$super_img")" "$output_dir" "$device" | tail -n 1) || return 1
       [[ -n "$package" ]] || return 1
       [[ -f "$package" ]] || return 1
       log_success "TWRP package: $package"

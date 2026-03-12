@@ -5,6 +5,10 @@ super_type: dynamic
 family: dmqxxx
 variant: dm3q
 output_name: dm3q
+super_group_name: qti_dynamic_partitions
+super_partition_size: 12107358208
+super_group_size: 12103163904
+super_metadata_slots: 2
 
 partitions:
   - system
