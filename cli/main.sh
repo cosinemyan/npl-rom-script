@@ -32,7 +32,7 @@ source "$CORE_DIR/partition/repack.sh"
 source "$CORE_DIR/partition/erofs_extract.sh"
 source "$CORE_DIR/partition/dynamic_rebuild.sh"
 source "$CORE_DIR/avb/fstab_patch.sh"
-source "$CORE_DIR/avb/vbmeta_patch.sh"
+source "$CORE_DIR/avb/sign.sh"
 source "$CORE_DIR/packer/odin.sh"
 source "$CORE_DIR/packer/twrp.sh"
 source "$CORE_DIR/patch_engine.sh"
@@ -1108,6 +1108,8 @@ main() {
   mount_and_apply_patches "$partitions_dir" "$config_file" "$profile" "$device" "$keep_mounts" || exit 1
 
   repack_erofs_partitions "$MOUNT_DIR" "$partitions_dir" || exit 1
+
+  sign_all_partitions "$partitions_dir" || exit 1
 
   local rebuilt_super
   rebuilt_super=$(rebuild_partitions_and_super "$partitions_dir" "$config_file" "$super_img") || exit 1

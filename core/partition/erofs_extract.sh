@@ -26,6 +26,36 @@ extract_erofs_to_dir() {
   mkdir -p "$output_dir"
   run_with_progress "Syncing EROFS contents to writable directory ($partition_name)" sudo rsync -aHAX --info=none "$temp_mount/" "$output_dir/"
 
+  # Generate fs_config and file_context for EROFS repack (UN1CA-style)
+  local configs_dir="$WORK_DIR/configs"
+  mkdir -p "$configs_dir"
+  log_info "Generating fs_config/file_context for $partition_name"
+
+  sudo find "$temp_mount" | sudo xargs -I "{}" -P "$(nproc)" stat -c "%n %u %g %a capabilities=0x0" "{}" \
+    > "$configs_dir/fs_config-$partition_name" 2>/dev/null || true
+  sudo find "$temp_mount" | sudo xargs -I "{}" -P "$(nproc)" sh -c \
+    'echo "$1 $(getfattr -n security.selinux --only-values -h --absolute-names "$1" 2>/dev/null || echo "u:object_r:${2}_file:s0")"' \
+    "sh" "{}" "$partition_name" \
+    > "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+
+  sort -o "$configs_dir/fs_config-$partition_name" "$configs_dir/fs_config-$partition_name" 2>/dev/null || true
+  sort -o "$configs_dir/file_context-$partition_name" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+
+  # Fix paths: replace temp_mount prefix with proper mount point paths
+  if [[ "$partition_name" == "system" ]] && [[ -d "$output_dir/system" ]]; then
+    sudo sed -i -e "s|$temp_mount |/ |g" -e "s|$temp_mount||g" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+    sudo sed -i -e "s|$temp_mount | |g" -e "s|$temp_mount/||g" "$configs_dir/fs_config-$partition_name" 2>/dev/null || true
+  else
+    sudo sed -i "s|$temp_dir|/$partition_name|g" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+    sudo sed -i -e "s|$temp_mount | |g" -e "s|$temp_mount|$partition_name|g" "$configs_dir/fs_config-$partition_name" 2>/dev/null || true
+  fi
+
+  # Escape regex special chars in file_context for erofs mkfs
+  sudo sed -i -e "s|\.|\\\.|g" -e "s|\+|\\\+|g" -e "s|\[|\\\[|g" \
+    -e "s|\]|\\\]|g" -e "s|\*|\\\*|g" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+
+  sudo chown "$(id -u):$(id -g)" "$configs_dir/fs_config-$partition_name" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+
   sudo umount "$temp_mount"
   rmdir "$temp_mount"
 
@@ -50,9 +80,31 @@ repack_erofs_from_dir() {
     return 1
   fi
 
-  # mkfs.erofs usually needs sudo for proper permission preservation if files are owned by root
-  # But since we chowned them for patching, we might need to handle perms via fs-config or just run as sudo.
-  # CRB uses level 9 lz4hc
-  # mkfs.erofs -zlz4hc,level=9 output_image source_dir
-  run_with_progress "Building EROFS image ($partition_name)" sudo "$mkfs_erofs_bin" -zlz4hc,level=9 "$output_image" "$source_dir"
+  # Build args matching UN1CA's mkfs.erofs parameters for Samsung compatibility
+  local erofs_args=(-z "lz4hc,9" -b 4096)
+
+  local mount_point="$partition_name"
+  [[ "$partition_name" == "system" ]] && mount_point="/"
+  erofs_args+=(--mount-point "$mount_point")
+
+  local configs_dir="$WORK_DIR/configs"
+  if [[ -f "$configs_dir/fs_config-$partition_name" ]]; then
+    erofs_args+=(--fs-config-file "$configs_dir/fs_config-$partition_name")
+  else
+    log_warn "No fs_config found for $partition_name, SELinux labels may be missing"
+  fi
+
+  if [[ -f "$configs_dir/file_context-$partition_name" ]]; then
+    erofs_args+=(--file-contexts "$configs_dir/file_context-$partition_name")
+  else
+    log_warn "No file_context found for $partition_name, SELinux labels may be missing"
+  fi
+
+  # Samsung fixed timestamp for erofs images
+  erofs_args+=(-T 1640995200)
+
+  erofs_args+=("$output_image" "$source_dir")
+
+  log_verbose "mkfs.erofs args: ${erofs_args[*]}"
+  run_with_progress "Building EROFS image ($partition_name)" sudo "$mkfs_erofs_bin" "${erofs_args[@]}"
 }

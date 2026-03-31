@@ -210,11 +210,10 @@ rebuild_super_img() {
   log_info "Using super geometry: device_size=$device_size_bytes group=$group_name group_size=$group_size_bytes metadata_slots=$metadata_slots"
   
   local lpmake_args=(
-    --sparse
     --metadata-size 65536
     --super-name super
     --metadata-slots "$metadata_slots"
-    --device-size "$device_size_bytes"
+    --device "super:${device_size_bytes}"
     --group "${group_name}:${group_size_bytes}"
   )
   
