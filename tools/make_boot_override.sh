@@ -224,6 +224,10 @@ main() {
 
   [[ -s "$repack_out" ]] || die "Repacked boot image is missing/empty"
 
+  # Samsung Odin requires the SEANDROIDENFORCE footer on boot images.
+  printf 'SEANDROIDENFORCE' >> "$repack_out"
+  log "Appended SEANDROIDENFORCE footer"
+
   local stock_size new_size
   stock_size=$(stat -c%s "$stock_raw")
   new_size=$(stat -c%s "$repack_out")

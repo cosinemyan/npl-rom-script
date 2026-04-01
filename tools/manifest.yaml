@@ -124,3 +124,13 @@ tools:
     subpath: .
     executable: mount.erofs
     description: Mount EROFS filesystem (FUSE)
+
+  # APK / smali tools
+  apktool:
+    type: jar_wrapper
+    repo: iBotPeaches/Apktool
+    version: v3.0.1
+    asset_pattern: apktool_*.jar
+    executable: apktool
+    entry: apktool.jar
+    description: Android APK decompiler/recompiler

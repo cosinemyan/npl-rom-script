@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="npl_settings_title">NPL ROM</string>
+    <string name="npl_rom_version_title">NPL ROM version</string>
+    <string name="npl_device_name_title">Device name</string>
+    <string name="menu_key_npl_top_settings">top_level_npl</string>
+    <string name="keywords_npl_settings">npl, rom, custom, version, device</string>
+</resources>

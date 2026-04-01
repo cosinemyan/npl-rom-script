@@ -11,6 +11,7 @@ readonly PATCHES_DIR="$PROJECT_ROOT/patches"
 readonly TOOLS_DIR="$PROJECT_ROOT/tools"
 readonly BIN_DIR="$TOOLS_DIR/bin"
 readonly BASE_WORK_DIR="$PROJECT_ROOT/work"
+readonly MODULES_DIR="$PROJECT_ROOT/modules"
 readonly DEVICE_ROOT_NAME="$(basename "$DEVICES_DIR")"
 WORK_DIR="$BASE_WORK_DIR"
 
@@ -36,6 +37,18 @@ source "$CORE_DIR/avb/sign.sh"
 source "$CORE_DIR/packer/odin.sh"
 source "$CORE_DIR/packer/twrp.sh"
 source "$CORE_DIR/patch_engine.sh"
+
+# APK / smali modules (optional — only when apktool is available)
+if command -v apktool &>/dev/null || [[ -f "$BIN_DIR/apktool" ]]; then
+  source "$CORE_DIR/apk/apktool.sh"
+  source "$CORE_DIR/apk/smali.sh"
+  source "$CORE_DIR/apk/module.sh"
+else
+  # Stub so the build pipeline doesn't break when apktool is missing
+  apply_apk_modules() {
+    log_verbose "apktool not available; skipping APK modules"
+  }
+fi
 
 BUILD_DEVICE_FAMILY=""
 BUILD_DEVICE_VARIANT=""
@@ -944,6 +957,7 @@ main() {
   local resume="false"
   local setup_tools="false"
   local keep_mounts="false"
+  local modules="${NPL_MODULES:-npl_settings,knoxpatch,multiuser,outdoor_mode}"
   
   case "$command" in
     build)
@@ -1003,6 +1017,14 @@ main() {
         ;;
       --keep-mounts)
         keep_mounts="true"
+        shift
+        ;;
+      --modules)
+        modules="$2"
+        shift 2
+        ;;
+      --no-modules)
+        modules=""
         shift
         ;;
       --help)
@@ -1108,6 +1130,8 @@ main() {
   mount_and_apply_patches "$partitions_dir" "$config_file" "$profile" "$device" "$keep_mounts" || exit 1
 
   repack_erofs_partitions "$MOUNT_DIR" "$partitions_dir" || exit 1
+
+  apply_apk_modules "$modules" || exit 1
 
   sign_all_partitions "$partitions_dir" || exit 1
 

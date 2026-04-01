@@ -24,7 +24,11 @@ extract_erofs_to_dir() {
   fi
 
   mkdir -p "$output_dir"
-  run_with_progress "Syncing EROFS contents to writable directory ($partition_name)" sudo rsync -aHAX --info=none "$temp_mount/" "$output_dir/"
+  if command -v rsync &>/dev/null; then
+    run_with_progress "Syncing EROFS contents to writable directory ($partition_name)" sudo rsync -aHAX --info=none "$temp_mount/" "$output_dir/"
+  else
+    run_with_progress "Copying EROFS contents to writable directory ($partition_name)" sudo cp -a "$temp_mount/." "$output_dir/"
+  fi
 
   # Generate fs_config and file_context for EROFS repack (UN1CA-style)
   local configs_dir="$WORK_DIR/configs"
@@ -46,7 +50,7 @@ extract_erofs_to_dir() {
     sudo sed -i -e "s|$temp_mount |/ |g" -e "s|$temp_mount||g" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
     sudo sed -i -e "s|$temp_mount | |g" -e "s|$temp_mount/||g" "$configs_dir/fs_config-$partition_name" 2>/dev/null || true
   else
-    sudo sed -i "s|$temp_dir|/$partition_name|g" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
+    sudo sed -i "s|$temp_mount|/$partition_name|g" "$configs_dir/file_context-$partition_name" 2>/dev/null || true
     sudo sed -i -e "s|$temp_mount | |g" -e "s|$temp_mount|$partition_name|g" "$configs_dir/fs_config-$partition_name" 2>/dev/null || true
   fi
 

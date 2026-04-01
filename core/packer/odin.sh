@@ -22,6 +22,30 @@ _image_has_avb_footer() {
   [[ "$footer_magic" == "AVBf" ]]
 }
 
+_image_has_samsung_footer() {
+  local image="$1"
+  [[ -f "$image" ]] || return 1
+
+  local image_size
+  image_size=$(stat -c%s "$image" 2>/dev/null || echo 0)
+  [[ "$image_size" -ge 16 ]] || return 1
+
+  local footer
+  footer=$(dd if="$image" bs=1 skip=$((image_size - 16)) count=16 2>/dev/null || true)
+  [[ "$footer" == "SEANDROIDENFORCE" ]]
+}
+
+_ensure_samsung_footer() {
+  local image="$1"
+
+  if _image_has_samsung_footer "$image"; then
+    return 0
+  fi
+
+  printf 'SEANDROIDENFORCE' >> "$image"
+  log_verbose "Appended SEANDROIDENFORCE footer to $(basename "$image")"
+}
+
 _copy_odin_extra_file() {
   local src="$1"
   local package_dir="$2"
@@ -157,6 +181,48 @@ _find_custom_boot_image() {
   return 1
 }
 
+_find_custom_init_boot_image() {
+  local config_file="$1"
+  local -a dirs=()
+  mapfile -t dirs < <(_collect_kernel_dirs "$config_file")
+  [[ ${#dirs[@]} -gt 0 ]] || return 1
+
+  local idx
+  for (( idx=${#dirs[@]}-1; idx>=0; idx-- )); do
+    local d="${dirs[$idx]}"
+    local candidate
+    for candidate in "$d/init_boot.img.lz4" "$d/init_boot.img"; do
+      if [[ -f "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+  done
+
+  return 1
+}
+
+_find_custom_vendor_boot_image() {
+  local config_file="$1"
+  local -a dirs=()
+  mapfile -t dirs < <(_collect_kernel_dirs "$config_file")
+  [[ ${#dirs[@]} -gt 0 ]] || return 1
+
+  local idx
+  for (( idx=${#dirs[@]}-1; idx>=0; idx-- )); do
+    local d="${dirs[$idx]}"
+    local candidate
+    for candidate in "$d/vendor_boot.img.lz4" "$d/vendor_boot.img"; do
+      if [[ -f "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+  done
+
+  return 1
+}
+
 _find_custom_kernel_blob() {
   local config_file="$1"
   local -a dirs=()
@@ -186,6 +252,46 @@ _find_custom_kernel_blob() {
   return 1
 }
 
+_apply_boot_variant_override() {
+  local config_file="$1"
+  local package_dir="$2"
+  local variant="$3"  # init_boot, vendor_boot
+
+  local custom_img
+  custom_img=$("_find_custom_${variant}_image" "$config_file" || true)
+  if [[ -z "$custom_img" ]]; then
+    return 0
+  fi
+
+  # Decompress (if .lz4), ensure Samsung footer, and place in package.
+  local work_dir="$WORK_DIR/output/${variant}_repack"
+  rm -rf "$work_dir"
+  mkdir -p "$work_dir"
+
+  if [[ "$custom_img" == *.lz4 ]]; then
+    lz4 -d -f "$custom_img" "$work_dir/${variant}.img" >/dev/null 2>&1 || {
+      _copy_odin_extra_file "$custom_img" "$package_dir" || return 1
+      log_info "Custom ${variant} image override applied: $(basename "$custom_img")"
+      return 0
+    }
+    _ensure_samsung_footer "$work_dir/${variant}.img"
+    lz4 -B4 --content-size -f "$work_dir/${variant}.img" "$package_dir/${variant}.img.lz4" >/dev/null || return 1
+  else
+    cp -f "$custom_img" "$work_dir/${variant}.img"
+    _ensure_samsung_footer "$work_dir/${variant}.img"
+    _copy_odin_extra_file "$work_dir/${variant}.img" "$package_dir" || return 1
+  fi
+  log_info "Custom ${variant} image override applied: $(basename "$custom_img")"
+}
+
+_apply_init_boot_override() {
+  _apply_boot_variant_override "$1" "$2" "init_boot"
+}
+
+_apply_vendor_boot_override() {
+  _apply_boot_variant_override "$1" "$2" "vendor_boot"
+}
+
 repack_boot_with_custom_kernel() {
   local config_file="$1"
   local firmware_source_dir="$2"
@@ -194,7 +300,29 @@ repack_boot_with_custom_kernel() {
   local custom_boot
   custom_boot=$(_find_custom_boot_image "$config_file" || true)
   if [[ -n "$custom_boot" ]]; then
-    _copy_odin_extra_file "$custom_boot" "$package_dir" || return 1
+    # Full boot image override — ensure Samsung footer is present.
+    if [[ "$custom_boot" == *.img ]]; then
+      # Raw .img: append footer in a temp copy so the original is untouched.
+      local work_dir="$WORK_DIR/output/kernel_repack"
+      rm -rf "$work_dir"
+      mkdir -p "$work_dir"
+      cp -f "$custom_boot" "$work_dir/$(basename "$custom_boot")"
+      _ensure_samsung_footer "$work_dir/$(basename "$custom_boot")"
+      _copy_odin_extra_file "$work_dir/$(basename "$custom_boot")" "$package_dir" || return 1
+    else
+      # .img.lz4: decompress, check footer, recompress.
+      local work_dir="$WORK_DIR/output/kernel_repack"
+      rm -rf "$work_dir"
+      mkdir -p "$work_dir"
+      lz4 -d -f "$custom_boot" "$work_dir/boot.img" >/dev/null 2>&1 || {
+        # Can't decompress, copy as-is.
+        _copy_odin_extra_file "$custom_boot" "$package_dir" || return 1
+        log_info "Custom boot image override applied: $(basename "$custom_boot")"
+        return 0
+      }
+      _ensure_samsung_footer "$work_dir/boot.img"
+      lz4 -B4 --content-size -f "$work_dir/boot.img" "$package_dir/boot.img.lz4" >/dev/null || return 1
+    fi
     log_info "Custom boot image override applied: $(basename "$custom_boot")"
     return 0
   fi
@@ -333,6 +461,9 @@ repack_boot_with_custom_kernel() {
     log_warn "Provide full boot.img/boot.img.lz4 in device kernel/ folder for reliable override"
     return 0
   fi
+
+  # Samsung Odin requires the SEANDROIDENFORCE footer on boot images.
+  _ensure_samsung_footer "$rebuilt_boot"
 
   local stock_size rebuilt_size
   stock_size=$(stat -c%s "$raw_boot" 2>/dev/null || echo 0)
@@ -533,6 +664,9 @@ create_odin_package() {
   fi
 
   repack_boot_with_custom_kernel "$config_file" "$vbmeta_source_dir" "$package_dir" || return 1
+
+  _apply_init_boot_override "$config_file" "$package_dir" || return 1
+  _apply_vendor_boot_override "$config_file" "$package_dir" || return 1
 
   apply_device_odin_extras "$config_file" "$package_dir" || return 1
 

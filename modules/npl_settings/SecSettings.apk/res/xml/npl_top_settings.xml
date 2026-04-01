@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen android:title="@string/npl_settings_title"
+  settings:hierarchicalParentFragment="com.android.settings.homepage.TopLevelSettings"
+  settings:keywords="@string/keywords_npl_settings"
+  settings:topLevelPreferenceKey="top_level_npl"
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:settings="http://schemas.android.com/apk/res-auto">
+
+    <com.android.settingslib.widget.LayoutPreference
+        android:layout="@layout/npl_settings_logo_layout"
+        android:selectable="false"
+        android:key="npl_logo" />
+
+    <com.samsung.android.settings.widget.SecInsetCategoryPreference />
+
+    <Preference
+        android:title="@string/npl_rom_version_title"
+        android:key="npl_rom_version"
+        android:summary="@string/summary_placeholder"
+        settings:controller="io.npl.rom.settings.ROMVersionPreferenceController"
+        settings:enableCopying="true" />
+
+    <Preference
+        android:title="@string/npl_device_name_title"
+        android:key="npl_device_name"
+        android:summary="@string/summary_placeholder"
+        settings:controller="io.npl.rom.settings.DeviceNamePreferenceController"
+        settings:enableCopying="true" />
+
+</PreferenceScreen>

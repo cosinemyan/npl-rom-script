@@ -1,0 +1,1 @@
+    <com.android.settings.widget.HomepagePreference android:icon="@drawable/sec_ic_settings_npl" android:title="@string/npl_settings_title" android:key="top_level_npl" android:summary="@string/summary_placeholder" android:order="-49999" android:fragment="io.npl.rom.settings.NPLSettingsFragment" settings:controller="io.npl.rom.settings.TopLevelNPLSettingsPreferenceController" />

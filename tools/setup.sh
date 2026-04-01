@@ -149,6 +149,9 @@ install_tool() {
     python_wrapper)
       install_git_clone_tool "$tool_name" "$tool_version" "$source_dir" "$executable_name"
       ;;
+    jar_wrapper)
+      install_jar_wrapper_tool "$tool_name" "$tool_version" "$source_dir" "$executable_name"
+      ;;
     magisk_apk)
       install_magisk_apk_tool "$tool_name" "$tool_version" "$source_dir" "$executable_name"
       ;;
@@ -229,6 +232,29 @@ install_github_release_tool() {
   fi
   
   install_binary "$binary" "$BIN_DIR" "$executable_name"
+}
+
+# Install JAR-based tool (download JAR, create java -jar wrapper)
+install_jar_wrapper_tool() {
+  local tool_name="$1"
+  local version="$2"
+  local source_dir="$3"
+  local executable_name="$4"
+
+  local repo
+  repo=$(parse_tool_info "$MANIFEST_FILE" "$tool_name" "repo" 2>/dev/null || true)
+  local asset_pattern
+  asset_pattern=$(parse_tool_info "$MANIFEST_FILE" "$tool_name" "asset_pattern" 2>/dev/null || true)
+  local entry
+  entry=$(parse_tool_info "$MANIFEST_FILE" "$tool_name" "entry" 2>/dev/null || echo "$tool_name.jar")
+
+  local downloaded_file
+  downloaded_file=$(download_github_release "$repo" "$version" "$asset_pattern" "$source_dir" "$tool_name")
+
+  # Copy JAR with expected name
+  cp "$downloaded_file" "$source_dir/$entry" 2>/dev/null || true
+
+  jar_wrapper "$tool_name" "$source_dir" "$BIN_DIR" "$entry"
 }
 
 # Install tool from git clone

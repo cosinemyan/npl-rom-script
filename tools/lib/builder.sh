@@ -117,6 +117,37 @@ EOF
   log_info "Created wrapper: $output_file"
 }
 
+# Build a shell wrapper that invokes a JAR file via java -jar
+jar_wrapper() {
+  local tool_name="$1"
+  local source_dir="$2"
+  local output_dir="$3"
+  local entry="${4:-$tool_name.jar}"
+
+  local jar_file="$source_dir/$entry"
+
+  if [[ ! -f "$jar_file" ]]; then
+    jar_file=$(find "$source_dir" -maxdepth 2 -name "*.jar" | head -n 1)
+  fi
+
+  if [[ -z "$jar_file" ]] || [[ ! -f "$jar_file" ]]; then
+    log_error "Could not find JAR file for $tool_name"
+    return 1
+  fi
+
+  local output_file="$output_dir/$tool_name"
+
+  cat > "$output_file" << EOF
+#!/bin/bash
+exec java -jar "\$(dirname "\$0")/$tool_name.jar" "\$@"
+EOF
+
+  cp "$jar_file" "$output_dir/$tool_name.jar"
+  chmod +x "$output_file"
+
+  log_info "Created JAR wrapper: $output_file -> $(basename "$jar_file")"
+}
+
 # Extract archive
 extract_archive() {
   local archive_file="$1"

@@ -27,8 +27,12 @@ download_github_release() {
     release_info=$(wget -qO- "$api_url")
   fi
   
+  # Convert glob-style pattern (apktool_*.jar) to regex (apktool_.*\.jar)
+  local regex_pattern
+  regex_pattern=$(printf '%s' "$asset_pattern" | sed 's/[.[\^$()+?{|]/\\&/g; s/\*/.*/g')
+
   local download_url
-  download_url=$(echo "$release_info" | grep -o '"browser_download_url":"[^"]*' | grep "$asset_pattern" | head -n 1 | cut -d'"' -f4)
+  download_url=$(echo "$release_info" | grep -oE '"browser_download_url": *"[^"]+' | grep -E "$regex_pattern" | head -n 1 | grep -oE 'https://[^"]+')
   
   if [[ -z "$download_url" ]]; then
     log_error "Could not find matching asset for pattern: $asset_pattern"

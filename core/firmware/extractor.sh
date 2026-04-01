@@ -210,12 +210,22 @@ sync_home_csc_unpacked_to_raw_image() {
     }
   fi
 
-  run_with_progress "Syncing patched HOME_CSC data back to image ($name)" \
-    sudo rsync -a --delete "$src_dir"/ "$temp_mount"/ || {
-      sudo umount "$temp_mount" || true
-      rmdir "$temp_mount" 2>/dev/null || true
-      return 1
-    }
+  if command -v rsync &>/dev/null; then
+    run_with_progress "Syncing patched HOME_CSC data back to image ($name)" \
+      sudo rsync -a --delete "$src_dir"/ "$temp_mount"/ || {
+        sudo umount "$temp_mount" || true
+        rmdir "$temp_mount" 2>/dev/null || true
+        return 1
+      }
+  else
+    log_verbose "rsync not available, using cp -a for HOME_CSC sync"
+    run_with_progress "Copying patched HOME_CSC data back to image ($name)" \
+      sudo cp -a "$src_dir"/. "$temp_mount"/ || {
+        sudo umount "$temp_mount" || true
+        rmdir "$temp_mount" 2>/dev/null || true
+        return 1
+      }
+  fi
 
   sync
   sudo umount "$temp_mount" || true

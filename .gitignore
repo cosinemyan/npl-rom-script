@@ -41,3 +41,6 @@ firmware/**
 !firmware/.gitkeep
 !firmware/*/
 !firmware/*/.gitkeep
+
+.env
+.env*
