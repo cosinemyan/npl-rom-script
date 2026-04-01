@@ -4,11 +4,25 @@
 
 log_info "Enabling Outdoor mode in SecSettings"
 
-smali_patch "system" "system/priv-app/SecSettings/SecSettings.apk" \
-  "smali_classes4/com/samsung/android/settings/display/controller/SecOutDoorModePreferenceController.smali" \
+local apk_path="system/priv-app/SecSettings/SecSettings.apk"
+local decoded_dir="$APKTOOL_DIR/system/${apk_path%/*}/$(basename "$apk_path")"
+
+# Find the actual smali path — Samsung moves classes between dex splits across firmware versions
+local smali_file
+smali_file=$(find "$decoded_dir" -name "SecOutDoorModePreferenceController.smali" -type f 2>/dev/null | head -1)
+
+if [[ -z "$smali_file" ]]; then
+  log_warn "SecOutDoorModePreferenceController.smali not found — skipping outdoor mode"
+  return 0
+fi
+
+smali_file="${smali_file#$decoded_dir/}"
+
+smali_patch "system" "$apk_path" \
+  "$smali_file" \
   "return" \
   "isAvailable()Z" \
   "true" || {
-  log_warn "Outdoor mode patch failed — smali class path may differ on this firmware"
+  log_warn "Outdoor mode patch failed"
   return 0
 }
