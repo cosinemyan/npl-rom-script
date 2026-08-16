@@ -37,9 +37,30 @@ _image_has_samsung_footer() {
 
 _ensure_samsung_footer() {
   local image="$1"
+  local target_size="${2:-0}"
+
+  [[ -f "$image" ]] || return 1
 
   if _image_has_samsung_footer "$image"; then
-    return 0
+    local cur_sz
+    cur_sz=$(stat -c%s "$image" 2>/dev/null || echo 0)
+    if [[ "$cur_sz" -ge 16 ]]; then
+      truncate -s $((cur_sz - 16)) "$image"
+    fi
+  fi
+
+  if [[ "$target_size" -gt 0 ]]; then
+    local cur_sz
+    cur_sz=$(stat -c%s "$image" 2>/dev/null || echo 0)
+    local target_payload_sz=$((target_size - 16))
+    if [[ "$cur_sz" -gt "$target_payload_sz" ]]; then
+      log_warn "Boot image payload ($cur_sz) exceeds allowed size ($target_payload_sz)"
+      return 1
+    fi
+    if [[ "$cur_sz" -lt "$target_payload_sz" ]]; then
+      truncate -s "$target_payload_sz" "$image"
+      log_info "Padded boot image to payload size: $target_payload_sz bytes"
+    fi
   fi
 
   printf 'SEANDROIDENFORCE' >> "$image"
@@ -462,22 +483,9 @@ repack_boot_with_custom_kernel() {
     return 0
   fi
 
-  # Samsung Odin requires the SEANDROIDENFORCE footer on boot images.
-  _ensure_samsung_footer "$rebuilt_boot"
-
-  local stock_size rebuilt_size
+  local stock_size
   stock_size=$(stat -c%s "$raw_boot" 2>/dev/null || echo 0)
-  rebuilt_size=$(stat -c%s "$rebuilt_boot" 2>/dev/null || echo 0)
-  if [[ "$stock_size" -gt 0 && "$rebuilt_size" -gt 0 ]]; then
-    if [[ "$rebuilt_size" -gt "$stock_size" ]]; then
-      log_warn "Repacked boot image is larger than stock ($rebuilt_size > $stock_size); skipping kernel-blob repack"
-      return 0
-    fi
-    if [[ "$rebuilt_size" -lt "$stock_size" ]]; then
-      truncate -s "$stock_size" "$rebuilt_boot" || return 1
-      log_info "Padded rebuilt boot image to stock size: $stock_size bytes"
-    fi
-  fi
+  _ensure_samsung_footer "$rebuilt_boot" "$stock_size" || return 1
 
   lz4 -B4 --content-size -f "$rebuilt_boot" "$package_dir/boot.img.lz4" >/dev/null || return 1
   log_info "Custom kernel applied via boot repack: $(basename "$kernel_blob")"
@@ -630,7 +638,18 @@ create_odin_package() {
   if [[ "$super_img" == *.lz4 ]]; then
     cp "$super_img" "$package_dir/"
   else
-    lz4 -B4 --content-size -f "$super_img" "$package_dir/super.img.lz4" || return 1
+    local target_super="$super_img"
+    if command -v img2simg &>/dev/null; then
+      if ! file -b "$super_img" 2>/dev/null | grep -qi "sparse"; then
+        log_info "Converting raw super.img to Android Sparse format using img2simg..."
+        local sparse_super="$WORK_DIR/output/super_sparse.img"
+        if img2simg "$super_img" "$sparse_super"; then
+          target_super="$sparse_super"
+        fi
+      fi
+    fi
+    lz4 -B4 --content-size -f "$target_super" "$package_dir/super.img.lz4" || return 1
+    [[ "$target_super" == *super_sparse.img ]] && rm -f "$target_super"
   fi
 
   if [[ -n "$vbmeta_source_dir" ]] && [[ -d "$vbmeta_source_dir" ]]; then

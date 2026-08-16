@@ -224,20 +224,21 @@ main() {
 
   [[ -s "$repack_out" ]] || die "Repacked boot image is missing/empty"
 
-  # Samsung Odin requires the SEANDROIDENFORCE footer on boot images.
+  local stock_size cur_size target_payload_sz
+  stock_size=$(stat -c%s "$stock_raw")
+  cur_size=$(stat -c%s "$repack_out")
+  target_payload_sz=$((stock_size - 16))
+
+  if [[ "$cur_size" -gt "$target_payload_sz" ]]; then
+    die "Repacked boot payload is larger than allowed ($cur_size > $target_payload_sz)"
+  fi
+  if [[ "$cur_size" -lt "$target_payload_sz" ]]; then
+    truncate -s "$target_payload_sz" "$repack_out"
+    log "Padded repacked boot payload to: $target_payload_sz bytes"
+  fi
+
   printf 'SEANDROIDENFORCE' >> "$repack_out"
   log "Appended SEANDROIDENFORCE footer"
-
-  local stock_size new_size
-  stock_size=$(stat -c%s "$stock_raw")
-  new_size=$(stat -c%s "$repack_out")
-  if [[ "$new_size" -gt "$stock_size" ]]; then
-    die "Repacked boot is larger than stock ($new_size > $stock_size)"
-  fi
-  if [[ "$new_size" -lt "$stock_size" ]]; then
-    truncate -s "$stock_size" "$repack_out"
-    log "Padded repacked boot to stock size: $stock_size bytes"
-  fi
 
   mkdir -p "$(dirname "$out_path")"
   log "Compressing output to boot.img.lz4"
